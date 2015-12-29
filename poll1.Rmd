@@ -1,0 +1,156 @@
+---
+title: "R / Shiny User Poll"
+author: "Casimir Saternos"
+date: "December 25, 2015"
+output:
+  html_document:
+    css: styles.css
+---
+
+```{r echo=FALSE}
+library(knitr)
+library(ggplot2)
+suppressMessages(library(dplyr, warn.conflicts = FALSE, quietly=TRUE))
+
+df <- read.csv("~/Desktop/poll1/data/R - Shiny User Survey (Responses) - Form Responses 1.csv", stringsAsFactors=FALSE)
+
+df$survey_time <- strptime(df$Timestamp, '%m/%d/%Y %H:%M:%S' )
+surveyBin <- diff(as.numeric(range(df$survey_time))) / 30
+
+## Utilty Functions
+trim <- function (x) gsub("^\\s+|\\s+$", "", x)
+
+alphaOnly <- function(x) gsub("[^[:alnum:] ]", "", x)
+
+clean<-function(col){
+  return(trim(tolower(alphaOnly(unlist(strsplit(col, split=","))))))
+}
+
+countChar <- function(s, char) {
+    s2 <- gsub(char,"",s)
+    return (nchar(s) - nchar(s2))
+}
+
+# Adding Columns
+
+df <- df %>% mutate(
+  windows=grepl('Windows',On.what.platform.s..do.you.run.R.),
+  osx=grepl('Mac / OSX',On.what.platform.s..do.you.run.R.),
+  linux=grepl('Linux',On.what.platform.s..do.you.run.R.)
+)
+
+df$windows_user <- ifelse(df$windows,'Windows User', 'Non-Windows User')
+
+df <- df %>% mutate(
+  html=grepl('HTML',What.technologies.related.to.web.development.have.you.used.),
+  javascript=grepl('JavaScript',What.technologies.related.to.web.development.have.you.used.),
+  css=grepl('CSS',What.technologies.related.to.web.development.have.you.used.),
+  serverside=grepl('Server Side Technologies',What.technologies.related.to.web.development.have.you.used.),
+  no_web_tech=grepl('None',What.technologies.related.to.web.development.have.you.used.)
+)
+
+
+```
+
+A total of `r dim(df)[1]` people responded to the survey.
+
+```{r, echo=FALSE}
+options(width=120)
+table(df$How.long.have.you.been.using.R.)
+```
+
+## Response Time
+
+Most of the responses were recieved in the first two days.  This corresponds with the length of time that it was on the front page of http://r-bloggers.com.
+
+```{r, echo=FALSE}
+ggplot(df, aes(x=survey_time)) + geom_bar(binwidth=surveyBin)
+```
+
+## Length of R Usage
+
+More than 1/2 the respondents have been using R for 5 years or less.
+
+```{r, echo=FALSE}
+ggplot(df, aes(x=How.long.have.you.been.using.R.)) + geom_bar()
+```
+
+## Roles
+
+Respondents serve in a variety of roles - many in more than one.
+
+```{r, echo=FALSE}
+table(clean(df$In.what.role.do.you.use.R.)) %>% as.data.frame() %>% filter(Freq > 1) %>% mutate(Role = Var1) %>% select(Role, Freq) %>%
+  arrange(desc(Freq)) %>% kable()
+```
+
+```{r, echo=FALSE}
+roleList <- table(clean(df$In.what.role.do.you.use.R.)) %>% as.data.frame() %>% filter(Freq == 1) %>% mutate(Role=as.character(Var1)) %>% select(Role) %>% paste(sep="' '", collapse=", ") 
+
+roleList <- sub( 'c\\(','', roleList)
+```
+In addition to these resposes, there were a large variety of roles that were written in once (`r roleList`).
+
+## Platforms
+The breakdown by platform shows interesting usage patterns.  
+
+```{r, echo=FALSE}
+options(width=120)
+df %>% select(On.what.platform.s..do.you.run.R.) %>% group_by(On.what.platform.s..do.you.run.R.) %>% summarize(count=n()) %>%  kable()
+ ```
+
+The width of the bars of the chart below represent the count of users 
+on each platform combination.  The most common responses were windows alone, followed by windows and linux.  These two responses comprise `r round((104 + 127) / (32 + 16 + 31 + 104 + 34 + 33 + 127) * 100, 2)` of all responses.
+
+```{r, echo=FALSE, warning=FALSE}
+
+platform_plot <- df %>% 
+  select(osx, windows, linux, On.what.platform.s..do.you.run.R., windows_user) %>% 
+  mutate(amount=osx + linux + windows, platform=On.what.platform.s..do.you.run.R.) %>% 
+  arrange(nchar(platform)) %>% 
+  ggplot(aes(x=seq_along(linux), y=amount, fill=platform, weight=10)) + 
+    geom_bar(stat="identity", width=1.001) + 
+    xlab('Respondents') + 
+    ylab('Number of OS Platforms') 
+
+platform_plot
+```
+
+Users that don't use Windows at all but use both OSX and Linux are the smallest group, and relatively few users use linux and OSX exclusively.  Windows usage is broken out in the following plot which represents non-windows users on the left and windows users on the right.
+
+```{r, echo=FALSE, warning=FALSE}
+platform_plot + facet_wrap(~ windows_user)
+```
+
+# Web Technology Experience
+
+```{r, echo=FALSE, warning=FALSE}
+techDf <- df %>% 
+  select(html, javascript, css, serverside, no_web_tech, What.technologies.related.to.web.development.have.you.used., Timestamp) %>% 
+  mutate(amount=html + javascript + css + serverside, no_web_tech, Timestamp, tech=What.technologies.related.to.web.development.have.you.used.) %>% 
+  arrange(as.numeric(html + javascript + css + serverside), What.technologies.related.to.web.development.have.you.used.) 
+
+table(df$What.technologies.related.to.web.development.have.you.used.) %>% as.data.frame() %>% arrange(desc(Freq)) %>% kable()
+```
+
+```{r, echo=FALSE, warning=FALSE, fig.height=10}
+techDf %>% 
+  ggplot(aes(x=seq_along(Timestamp), y=amount, fill=tech, weight=10)) + 
+    geom_bar(stat="identity", width=1.001) + 
+    xlab('Respondents') + 
+    ylab('Tech') + theme(legend.position="bottom", legend.direction="vertical")
+```
+
+
+## Raw Data
+[Google Spreadsheet](https://docs.google.com/spreadsheets/d/1Gm3jTIHs2TGMXoz84_DyuTBd3auGY3iJ3jzjQNExl5Q/edit?usp=sharing)
+
+## Issues with Poll Results
+
+*  Question 1, choice of less than one year, then 2 through 5 years.  One to two years not convered.
+*  Responses to Web Tech included None option.  Perhaps should have omitted this answer and let the question response be optional.
+
+
+
+
+
